@@ -5,6 +5,7 @@ Implements header-based chunking with font size detection and structural classif
 
 import re
 import uuid
+import logging
 from typing import List, Dict, Any, Optional, Tuple
 import pdfplumber
 from models.api_models import (
@@ -13,6 +14,8 @@ from models.api_models import (
     TopicMetadata,
     ChunkMetadata
 )
+
+logger = logging.getLogger(__name__)
 
 class HierarchicalChunkingService:
     """
@@ -79,8 +82,26 @@ class HierarchicalChunkingService:
 
         try:
             with pdfplumber.open(file_path) as pdf:
+                logger.info(f"Processing PDF with {len(pdf.pages)} pages for document {document_id}")
+
                 # Extract all headers with their positions and hierarchy
                 headers = self._extract_headers_with_font_sizes(pdf)
+                logger.info(f"Extracted {len(headers)} headers from PDF")
+
+                if not headers:
+                    logger.warning(f"No headers found in PDF {file_path}. Falling back to basic text chunking.")
+                    # Fallback: Extract all text and chunk it
+                    full_text = ""
+                    for page_num, page in enumerate(pdf.pages, start=1):
+                        text = page.extract_text()
+                        if text:
+                            full_text += text + "\n"
+
+                    if full_text.strip():
+                        return self._create_basic_chunks(full_text, document_id, chunk_size, chunk_overlap)
+                    else:
+                        logger.error(f"No text content extracted from PDF {file_path}")
+                        return []
 
                 # Create chunks between consecutive headers
                 for i, header in enumerate(headers):
@@ -97,12 +118,106 @@ class HierarchicalChunkingService:
                     if chunk:
                         chunks.append(chunk)
 
+                logger.info(f"Successfully created {len(chunks)} chunks from {len(headers)} headers")
+
+        except FileNotFoundError as e:
+            logger.error(f"PDF file not found: {file_path}")
+            return []
         except Exception as e:
-            print(f"Error processing PDF: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.error(f"Error processing PDF {file_path}: {e}", exc_info=True)
             return []
 
+        return chunks
+
+    def _create_basic_chunks(
+        self,
+        text: str,
+        document_id: str,
+        chunk_size: int = 512,
+        chunk_overlap: int = 50
+    ) -> List[HierarchicalChunk]:
+        """
+        Create basic text chunks when header detection fails.
+        Uses simple sliding window chunking with overlap.
+        """
+        chunks = []
+        text = text.strip()
+
+        if not text:
+            return chunks
+
+        # Split text into sentences for better chunk boundaries
+        sentences = re.split(r'(?<=[.!?])\s+', text)
+
+        current_chunk = ""
+        chunk_num = 0
+
+        for sentence in sentences:
+            # If adding this sentence would exceed chunk_size, save current chunk
+            if len(current_chunk) + len(sentence) > chunk_size and current_chunk:
+                chunk_num += 1
+                chunk_id = f"{document_id}_chunk_{chunk_num}"
+
+                # Create a basic hierarchical chunk
+                chunk = HierarchicalChunk(
+                    chunk_id=chunk_id,
+                    document_id=document_id,
+                    text=current_chunk.strip(),
+                    topic_metadata=TopicMetadata(
+                        chapter_num=None,
+                        chapter_title="Document Content",
+                        section_num=f"Part {chunk_num}",
+                        section_title=f"Content Part {chunk_num}",
+                        page_start=None,
+                        page_end=None
+                    ),
+                    chunk_metadata=ChunkMetadata(
+                        chunk_type=ChunkType.CONCEPT,  # Default to concept
+                        topic_id=document_id,
+                        key_terms=self._extract_key_terms(current_chunk),
+                        equations=self._extract_equations(current_chunk),
+                        has_equations=bool(self._extract_equations(current_chunk)),
+                        has_diagrams=False
+                    )
+                )
+                chunks.append(chunk)
+
+                # Start new chunk with overlap
+                words = current_chunk.split()
+                overlap_words = words[-chunk_overlap:] if len(words) > chunk_overlap else words
+                current_chunk = ' '.join(overlap_words) + ' ' + sentence
+            else:
+                current_chunk += ' ' + sentence if current_chunk else sentence
+
+        # Add the last chunk
+        if current_chunk.strip():
+            chunk_num += 1
+            chunk_id = f"{document_id}_chunk_{chunk_num}"
+
+            chunk = HierarchicalChunk(
+                chunk_id=chunk_id,
+                document_id=document_id,
+                text=current_chunk.strip(),
+                topic_metadata=TopicMetadata(
+                    chapter_num=None,
+                    chapter_title="Document Content",
+                    section_num=f"Part {chunk_num}",
+                    section_title=f"Content Part {chunk_num}",
+                    page_start=None,
+                    page_end=None
+                ),
+                chunk_metadata=ChunkMetadata(
+                    chunk_type=ChunkType.CONCEPT,
+                    topic_id=document_id,
+                    key_terms=self._extract_key_terms(current_chunk),
+                    equations=self._extract_equations(current_chunk),
+                    has_equations=bool(self._extract_equations(current_chunk)),
+                    has_diagrams=False
+                )
+            )
+            chunks.append(chunk)
+
+        logger.info(f"Created {len(chunks)} basic chunks from text")
         return chunks
 
     def _extract_headers_with_font_sizes(self, pdf) -> List[Dict[str, Any]]:
