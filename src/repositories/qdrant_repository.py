@@ -40,6 +40,56 @@ class QdrantRepository:
             logger.error(f"Error checking if collection '{collection_name}' exists: {str(e)}")
             return False
 
+    def ensure_indexes(self, collection_name: str) -> bool:
+        """
+        Ensure required payload indexes exist on a collection.
+        This can be called on existing collections to add missing indexes.
+
+        Args:
+            collection_name: Name of the collection
+
+        Returns:
+            True if indexes were ensured successfully, False otherwise
+        """
+        try:
+            logger.info(f"Ensuring payload indexes exist on collection '{collection_name}'")
+
+            # Index for document_id (used in unlink_content and batch_read_files)
+            try:
+                self.client.create_payload_index(
+                    collection_name=collection_name,
+                    field_name="document_id",
+                    field_schema="keyword"
+                )
+                logger.debug(f"Created index for document_id on collection '{collection_name}'")
+            except Exception as e:
+                # Index might already exist, which is fine
+                if "already exists" in str(e).lower():
+                    logger.debug(f"Index for document_id already exists on collection '{collection_name}'")
+                else:
+                    logger.warning(f"Could not create index for document_id: {str(e)}")
+
+            # Index for metadata.chunk_type (used in query_collection filtering)
+            try:
+                self.client.create_payload_index(
+                    collection_name=collection_name,
+                    field_name="metadata.chunk_type",
+                    field_schema="keyword"
+                )
+                logger.debug(f"Created index for metadata.chunk_type on collection '{collection_name}'")
+            except Exception as e:
+                # Index might already exist, which is fine
+                if "already exists" in str(e).lower():
+                    logger.debug(f"Index for metadata.chunk_type already exists on collection '{collection_name}'")
+                else:
+                    logger.warning(f"Could not create index for metadata.chunk_type: {str(e)}")
+
+            logger.info(f"Payload indexes ensured on collection '{collection_name}'")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to ensure indexes on collection '{collection_name}': {str(e)}")
+            return False
+
     def create_collection(self, collection_name: str) -> bool:
         try:
             if self.collection_exists(collection_name):
@@ -52,8 +102,14 @@ class QdrantRepository:
                     distance=Distance.COSINE
                 )
             )
+
+            # Ensure payload indexes are created
+            self.ensure_indexes(collection_name)
+
+            logger.info(f"Created collection '{collection_name}' with payload indexes")
             return True
-        except Exception:
+        except Exception as e:
+            logger.error(f"Failed to create collection '{collection_name}': {str(e)}")
             return False
 
     def delete_collection(self, collection_name: str) -> bool:
@@ -176,6 +232,33 @@ class QdrantRepository:
                 for hit in results
             ]
         except Exception as e:
+            # Check if error is due to missing index
+            error_msg = str(e)
+            if "Index required" in error_msg and "metadata.chunk_type" in error_msg:
+                logger.warning(f"Missing index detected for collection '{collection_name}', attempting to create indexes")
+                # Try to create the missing indexes
+                if self.ensure_indexes(collection_name):
+                    logger.info(f"Indexes created, retrying query for collection '{collection_name}'")
+                    # Retry the query once
+                    try:
+                        results = self.client.search(
+                            collection_name=collection_name,
+                            query_vector=query_vector,
+                            limit=limit,
+                            query_filter=query_filter
+                        )
+                        return [
+                            {
+                                "id": hit.id,
+                                "score": hit.score,
+                                "payload": hit.payload
+                            }
+                            for hit in results
+                        ]
+                    except Exception as retry_error:
+                        logger.error(f"Error querying collection after creating indexes: {retry_error}")
+                        return []
+
             logger.error(f"Error querying collection: {e}")
             return []
 
