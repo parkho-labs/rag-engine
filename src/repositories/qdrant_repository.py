@@ -87,18 +87,25 @@ class QdrantRepository:
                 text = doc.get("text", "")
                 vector = doc.get("vector", [])
                 doc_id = doc.get("document_id")
+                chunk_id = doc.get("chunk_id")
 
-                logger.debug(f"Processing document {doc_id}, text length: {len(text)}, vector length: {len(vector)}")
+                logger.debug(f"Processing document {doc_id}, chunk_id: {chunk_id}, text length: {len(text)}, vector length: {len(vector)}")
+
+                payload = {
+                    "document_id": doc_id,
+                    "text": text,
+                    "source": doc.get("source", ""),
+                    "metadata": doc.get("metadata", {})
+                }
+
+                # Add chunk_id if present (for hierarchical chunks)
+                if chunk_id:
+                    payload["chunk_id"] = chunk_id
 
                 point = PointStruct(
                     id=str(uuid.uuid4()),
                     vector=vector,
-                    payload={
-                        "document_id": doc_id,
-                        "text": text,
-                        "source": doc.get("source", ""),
-                        "metadata": doc.get("metadata", {})
-                    }
+                    payload=payload
                 )
                 points.append(point)
 
@@ -130,12 +137,32 @@ class QdrantRepository:
             logger.exception("Full exception details:")
             return False
 
-    def query_collection(self, collection_name: str, query_vector: List[float], limit: int = 5) -> List[Dict[str, Any]]:
+    def query_collection(self, collection_name: str, query_vector: List[float], limit: int = 5, chunk_type: Optional[str] = None) -> List[Dict[str, Any]]:
+        """
+        Query collection with optional chunk type filtering.
+
+        Args:
+            collection_name: Name of the collection
+            query_vector: Query embedding vector
+            limit: Maximum number of results
+            chunk_type: Optional chunk type filter (concept, example, question)
+
+        Returns:
+            List of search results with scores and payloads
+        """
         try:
+            # Build filter if chunk_type is specified
+            query_filter = None
+            if chunk_type:
+                query_filter = Filter(
+                    must=[FieldCondition(key="metadata.chunk_type", match={"value": chunk_type})]
+                )
+
             results = self.client.search(
                 collection_name=collection_name,
                 query_vector=query_vector,
-                limit=limit
+                limit=limit,
+                query_filter=query_filter
             )
 
             return [
@@ -146,7 +173,8 @@ class QdrantRepository:
                 }
                 for hit in results
             ]
-        except Exception:
+        except Exception as e:
+            logger.error(f"Error querying collection: {e}")
             return []
 
     def batch_read_files(self, collection_name: str, document_ids: List[str]) -> Dict[str, Any]:

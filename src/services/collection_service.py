@@ -5,7 +5,9 @@ from repositories.qdrant_repository import QdrantRepository
 from utils.embedding_client import EmbeddingClient
 from services.storage_factory import get_file_service
 from services.query_service import QueryService
+from services.hierarchical_chunking_service import HierarchicalChunkingService
 from models.api_models import LinkContentItem, LinkContentResponse, ApiResponse, ApiResponseWithBody, QueryResponse, UnlinkContentResponse
+from config import Config
 
 logger = logging.getLogger(__name__)
 
@@ -15,6 +17,7 @@ class CollectionService:
         self.embedding_client = EmbeddingClient()
         self.file_service = get_file_service()
         self.query_service = QueryService()
+        self.chunking_service = HierarchicalChunkingService()
 
     def create_collection(self, name: str, rag_config: Optional[Dict] = None, indexing_config: Optional[Dict] = None) -> ApiResponse:
         try:
@@ -67,17 +70,85 @@ class CollectionService:
         return self.file_service.get_file_content(file_id)
 
     def _generate_embedding_and_document(self, file_id: str, file_content: str, file_type: str) -> Optional[List[Dict[str, Any]]]:
+        """
+        Generate embeddings for hierarchical chunks.
+        For PDFs: Uses smart chunking with topic hierarchy and content types.
+        For other files: Falls back to simple chunking.
+        """
         try:
-            embedding = self.embedding_client.generate_single_embedding(file_content)
-            documents = [{
-                "document_id": file_id,
-                "text": file_content,
-                "source": file_type,
-                "metadata": {"file_type": file_type},
-                "vector": embedding
-            }]
+            documents = []
+
+            # Use hierarchical chunking for PDFs
+            if file_type.lower() == "pdf":
+                file_path = self.file_service.get_file_path(file_id)
+                if not file_path:
+                    return None
+
+                # Create hierarchical chunks
+                chunks = self.chunking_service.chunk_pdf_hierarchically(
+                    file_path=file_path,
+                    document_id=file_id,
+                    chunk_size=Config.embedding.CHUNK_SIZE,
+                    chunk_overlap=Config.embedding.CHUNK_OVERLAP
+                )
+
+                if not chunks:
+                    logger.warning(f"No chunks generated for {file_id}, falling back to full document")
+                    # Fallback to full document
+                    embedding = self.embedding_client.generate_single_embedding(file_content)
+                    return [{
+                        "document_id": file_id,
+                        "text": file_content,
+                        "source": file_type,
+                        "metadata": {"file_type": file_type},
+                        "vector": embedding
+                    }]
+
+                # Generate embeddings for each chunk
+                for chunk in chunks:
+                    embedding = self.embedding_client.generate_single_embedding(chunk.text)
+
+                    # Convert to storage format
+                    doc = {
+                        "document_id": file_id,
+                        "chunk_id": chunk.chunk_id,
+                        "text": chunk.text,
+                        "source": file_type,
+                        "metadata": {
+                            "file_type": file_type,
+                            "chunk_type": chunk.chunk_metadata.chunk_type.value,
+                            "topic_id": chunk.chunk_metadata.topic_id,
+                            "chapter_num": chunk.topic_metadata.chapter_num,
+                            "chapter_title": chunk.topic_metadata.chapter_title,
+                            "section_num": chunk.topic_metadata.section_num,
+                            "section_title": chunk.topic_metadata.section_title,
+                            "page_start": chunk.topic_metadata.page_start,
+                            "page_end": chunk.topic_metadata.page_end,
+                            "key_terms": chunk.chunk_metadata.key_terms,
+                            "equations": chunk.chunk_metadata.equations,
+                            "has_equations": chunk.chunk_metadata.has_equations,
+                            "has_diagrams": chunk.chunk_metadata.has_diagrams,
+                        },
+                        "vector": embedding
+                    }
+                    documents.append(doc)
+
+                logger.info(f"Generated {len(documents)} hierarchical chunks for {file_id}")
+
+            else:
+                # Simple chunking for non-PDF files
+                embedding = self.embedding_client.generate_single_embedding(file_content)
+                documents = [{
+                    "document_id": file_id,
+                    "text": file_content,
+                    "source": file_type,
+                    "metadata": {"file_type": file_type},
+                    "vector": embedding
+                }]
+
             return documents
-        except Exception:
+        except Exception as e:
+            logger.error(f"Error generating embeddings: {e}")
             return None
 
     def _check_file_already_linked(self, collection_name: str, file_id: str) -> bool:
