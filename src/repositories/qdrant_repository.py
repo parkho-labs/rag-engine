@@ -29,13 +29,15 @@ class QdrantRepository:
     def collection_exists(self, collection_name: str) -> bool:
         try:
             logger.debug(f"Checking if collection '{collection_name}' exists")
-            # Use get_collection instead of collection_exists (which doesn't exist in this version)
-            self.client.get_collection(collection_name)
-            logger.debug(f"Collection '{collection_name}' exists: True")
-            return True
+            # Use list_collections to avoid Pydantic validation errors from get_collection
+            # This is more reliable when there's a version mismatch between client and server
+            collections = self.client.get_collections()
+            collection_names = [col.name for col in collections.collections]
+            exists = collection_name in collection_names
+            logger.debug(f"Collection '{collection_name}' exists: {exists}")
+            return exists
         except Exception as e:
-            # Collection doesn't exist if get_collection raises an exception
-            logger.debug(f"Collection '{collection_name}' exists: False (exception: {str(e)})")
+            logger.error(f"Error checking if collection '{collection_name}' exists: {str(e)}")
             return False
 
     def create_collection(self, collection_name: str) -> bool:
