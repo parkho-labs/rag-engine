@@ -279,6 +279,30 @@ class QdrantRepository:
                 logger.debug(f"Document {doc_id} status: {status[doc_id]}")
             return status
         except Exception as e:
+            # Check if error is due to missing index
+            error_msg = str(e)
+            if "Index required" in error_msg and "document_id" in error_msg:
+                logger.warning(f"Missing index detected for collection '{collection_name}', attempting to create indexes")
+                # Try to create the missing indexes
+                if self.ensure_indexes(collection_name):
+                    logger.info(f"Indexes created, retrying batch_read_files for collection '{collection_name}'")
+                    # Retry the operation once
+                    try:
+                        status = {}
+                        for doc_id in document_ids:
+                            results = self.client.scroll(
+                                collection_name=collection_name,
+                                scroll_filter=Filter(
+                                    must=[FieldCondition(key="document_id", match={"value": doc_id})]
+                                ),
+                                limit=1
+                            )
+                            status[doc_id] = "indexed" if results[0] else "not_found"
+                        return status
+                    except Exception as retry_error:
+                        logger.error(f"Error checking file status after creating indexes: {retry_error}")
+                        return {doc_id: "error" for doc_id in document_ids}
+
             logger.error(f"Failed to check file status in collection '{collection_name}': {str(e)}")
             logger.exception("Full exception details:")
             return {doc_id: "error" for doc_id in document_ids}
