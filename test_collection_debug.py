@@ -2,7 +2,12 @@
 """Debug script to test collection name handling"""
 
 import sys
-sys.path.insert(0, '/home/user/rag-engine/src')
+import os
+
+# Add src directory to path (works cross-platform)
+script_dir = os.path.dirname(os.path.abspath(__file__))
+src_dir = os.path.join(script_dir, 'src')
+sys.path.insert(0, src_dir)
 
 from repositories.qdrant_repository import QdrantRepository
 import logging
