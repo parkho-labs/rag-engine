@@ -2,11 +2,15 @@ from fastapi import UploadFile
 import os
 import uuid
 import json
+import logging
 from datetime import datetime
 from typing import Optional, Dict, Any, List
 from models.api_models import FileUploadResponse, ApiResponse, ApiResponseWithBody
+from models.file_types import FileExtensions, UnsupportedFileTypeError
 from google.cloud import storage
 import tempfile
+
+logger = logging.getLogger(__name__)
 
 class GCSFileService:
     """
@@ -66,17 +70,12 @@ class GCSFileService:
             print(f"Error saving metadata: {e}")
 
     def _detect_file_type(self, file_extension: str) -> str:
-        """
-        Detect file type from file extension.
-        Returns 'pdf' for PDF files, 'text' for text-based files.
-        """
-        if file_extension == '.pdf':
-            return 'pdf'
-        elif file_extension in ['.txt', '.md', '.csv', '.json', '.xml', '.html', '.htm']:
-            return 'text'
-        else:
-            # Default to text for unknown extensions
-            return 'text'
+        try:
+            file_type = FileExtensions.get_file_type(file_extension)
+            return file_type.value
+        except UnsupportedFileTypeError as e:
+            logger.warning(f"Unsupported file type detected: {e}")
+            raise e
 
     def upload_file(self, file: UploadFile) -> FileUploadResponse:
         try:
@@ -117,6 +116,12 @@ class GCSFileService:
                 status="SUCCESS",
                 message="File uploaded successfully",
                 body={"file_id": file_id}
+            )
+        except UnsupportedFileTypeError as e:
+            return FileUploadResponse(
+                status="FAILURE",
+                message=f"Unsupported file type: {str(e)}",
+                body={}
             )
         except Exception as e:
             print(f"File upload error: {e}")

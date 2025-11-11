@@ -29,8 +29,6 @@ class QdrantRepository:
     def collection_exists(self, collection_name: str) -> bool:
         try:
             logger.debug(f"Checking if collection '{collection_name}' exists")
-            # Use list_collections to avoid Pydantic validation errors from get_collection
-            # This is more reliable when there's a version mismatch between client and server
             collections = self.client.get_collections()
             collection_names = [col.name for col in collections.collections]
             exists = collection_name in collection_names
@@ -41,20 +39,8 @@ class QdrantRepository:
             return False
 
     def ensure_indexes(self, collection_name: str) -> bool:
-        """
-        Ensure required payload indexes exist on a collection.
-        This can be called on existing collections to add missing indexes.
-
-        Args:
-            collection_name: Name of the collection
-
-        Returns:
-            True if indexes were ensured successfully, False otherwise
-        """
         try:
             logger.info(f"Ensuring payload indexes exist on collection '{collection_name}'")
-
-            # Index for document_id (used in unlink_content and batch_read_files)
             try:
                 self.client.create_payload_index(
                     collection_name=collection_name,
@@ -63,13 +49,11 @@ class QdrantRepository:
                 )
                 logger.debug(f"Created index for document_id on collection '{collection_name}'")
             except Exception as e:
-                # Index might already exist, which is fine
                 if "already exists" in str(e).lower():
                     logger.debug(f"Index for document_id already exists on collection '{collection_name}'")
                 else:
                     logger.warning(f"Could not create index for document_id: {str(e)}")
 
-            # Index for metadata.chunk_type (used in query_collection filtering)
             try:
                 self.client.create_payload_index(
                     collection_name=collection_name,
@@ -78,7 +62,6 @@ class QdrantRepository:
                 )
                 logger.debug(f"Created index for metadata.chunk_type on collection '{collection_name}'")
             except Exception as e:
-                # Index might already exist, which is fine
                 if "already exists" in str(e).lower():
                     logger.debug(f"Index for metadata.chunk_type already exists on collection '{collection_name}'")
                 else:
@@ -103,9 +86,7 @@ class QdrantRepository:
                 )
             )
 
-            # Ensure payload indexes are created
             self.ensure_indexes(collection_name)
-
             logger.info(f"Created collection '{collection_name}' with payload indexes")
             return True
         except Exception as e:
@@ -114,7 +95,6 @@ class QdrantRepository:
 
     def delete_collection(self, collection_name: str) -> bool:
         try:
-            # Check if collection exists first
             if not self.collection_exists(collection_name):
                 return False
 
@@ -126,7 +106,7 @@ class QdrantRepository:
 
     def list_collections(self) -> List[str]:
         try:
-            logger.debug("Fetching list of collections from Qdrant")
+            logger.info("Fetching list of collections from Qdrant")
             collections = self.client.get_collections()
             collection_names = [col.name for col in collections.collections]
             logger.debug(f"Found {len(collection_names)} collections: {collection_names}")
@@ -156,7 +136,6 @@ class QdrantRepository:
                     "metadata": doc.get("metadata", {})
                 }
 
-                # Add chunk_id if present (for hierarchical chunks)
                 if chunk_id:
                     payload["chunk_id"] = chunk_id
 
@@ -196,20 +175,7 @@ class QdrantRepository:
             return False
 
     def query_collection(self, collection_name: str, query_vector: List[float], limit: int = 5, chunk_type: Optional[str] = None) -> List[Dict[str, Any]]:
-        """
-        Query collection with optional chunk type filtering.
-
-        Args:
-            collection_name: Name of the collection
-            query_vector: Query embedding vector
-            limit: Maximum number of results
-            chunk_type: Optional chunk type filter (concept, example, question)
-
-        Returns:
-            List of search results with scores and payloads
-        """
         try:
-            # Build filter if chunk_type is specified
             query_filter = None
             if chunk_type:
                 query_filter = Filter(
@@ -232,14 +198,11 @@ class QdrantRepository:
                 for hit in results
             ]
         except Exception as e:
-            # Check if error is due to missing index
             error_msg = str(e)
             if "Index required" in error_msg and "metadata.chunk_type" in error_msg:
                 logger.warning(f"Missing index detected for collection '{collection_name}', attempting to create indexes")
-                # Try to create the missing indexes
                 if self.ensure_indexes(collection_name):
                     logger.info(f"Indexes created, retrying query for collection '{collection_name}'")
-                    # Retry the query once
                     try:
                         results = self.client.search(
                             collection_name=collection_name,
@@ -279,14 +242,11 @@ class QdrantRepository:
                 logger.debug(f"Document {doc_id} status: {status[doc_id]}")
             return status
         except Exception as e:
-            # Check if error is due to missing index
             error_msg = str(e)
             if "Index required" in error_msg and "document_id" in error_msg:
                 logger.warning(f"Missing index detected for collection '{collection_name}', attempting to create indexes")
-                # Try to create the missing indexes
                 if self.ensure_indexes(collection_name):
                     logger.info(f"Indexes created, retrying batch_read_files for collection '{collection_name}'")
-                    # Retry the operation once
                     try:
                         status = {}
                         for doc_id in document_ids:

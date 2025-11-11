@@ -1,19 +1,16 @@
-#!/usr/bin/env python3
-
 import sys
 import threading
 import time
 import logging
 from pathlib import Path
 
-# Setup paths
+# Setup paths first
 src_path = Path(__file__).parent / "src"
 sys.path.insert(0, str(src_path))
 
 # Import config after setting up paths
 from config import Config
 
-# Configure logging with environment variable
 log_level = getattr(logging, Config.app.LOG_LEVEL, logging.INFO)
 logging.basicConfig(
     level=log_level,
@@ -23,12 +20,10 @@ logging.basicConfig(
     ]
 )
 
-# Set up logger
 logger = logging.getLogger(__name__)
 logger.info(f"🔧 Logging configured at {Config.app.LOG_LEVEL} level")
 
 def run_fastapi():
-    """Run FastAPI server"""
     import uvicorn
     from main import app
 
@@ -41,9 +36,8 @@ def run_fastapi():
     )
 
 def run_gradio():
-    """Run Gradio UI"""
     logger.info("⏳ Waiting for FastAPI to start...")
-    time.sleep(3)  # Give FastAPI time to start
+    time.sleep(3)
 
     logger.info("🎉 Starting Gradio on port 7860...")
     from gradio_ui import RAGGradioUI
@@ -61,11 +55,9 @@ def run_gradio():
 def main():
     logger.info("🚀 Starting RAG Engine...")
 
-    # Start FastAPI in background thread
     fastapi_thread = threading.Thread(target=run_fastapi, daemon=True)
     fastapi_thread.start()
 
-    # Run Gradio in main thread
     try:
         run_gradio()
     except KeyboardInterrupt:

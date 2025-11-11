@@ -44,7 +44,7 @@ class RAGAPIClient:
             logger.error(error_msg)
             return {"success": False, "error": error_msg, "status_code": 0}
 
-    # File Management APIs
+
     def upload_file(self, file_content: bytes, filename: str) -> Dict[str, Any]:
         files = {"file": (filename, BytesIO(file_content), "application/octet-stream")}
         return self._make_request("POST", "/files", files=files)
@@ -58,10 +58,9 @@ class RAGAPIClient:
     def delete_file(self, file_id: str) -> Dict[str, Any]:
         return self._make_request("DELETE", f"/files/{file_id}")
 
-    # Collection Management APIs
     def get_collection(self, collection_name: str) -> Dict[str, Any]:
-        """Check if a specific collection exists"""
         return self._make_request("GET", f"/collection/{collection_name}")
+
 
     def create_collection(self, name: str, rag_config: Optional[Dict] = None, indexing_config: Optional[Dict] = None) -> Dict[str, Any]:
         data = {"name": name}

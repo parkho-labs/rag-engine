@@ -43,17 +43,13 @@ class ChunkConfig(BaseModel):
     source: str
     text: str
 
-# Hierarchical Chunking Models
-
 class ChunkType(str, Enum):
-    """Types of content chunks for learning hierarchy"""
     CONCEPT = "concept"
     EXAMPLE = "example"
     QUESTION = "question"
     OTHER = "other"
 
 class TopicMetadata(BaseModel):
-    """Metadata for top-level topic/header"""
     chapter_num: Optional[int] = None
     chapter_title: Optional[str] = None
     section_num: Optional[str] = None
@@ -62,17 +58,15 @@ class TopicMetadata(BaseModel):
     page_end: Optional[int] = None
 
 class ChunkMetadata(BaseModel):
-    """Extended metadata for individual chunks"""
     chunk_type: ChunkType
-    topic_id: str  # Links to parent topic
+    topic_id: str
     key_terms: List[str] = []
     equations: List[str] = []
     has_equations: bool = False
     has_diagrams: bool = False
-    difficulty_level: Optional[str] = None  # beginner, intermediate, advanced
+    difficulty_level: Optional[str] = None
 
 class HierarchicalChunk(BaseModel):
-    """A hierarchical chunk with topic and type categorization"""
     chunk_id: str
     document_id: str
     topic_metadata: TopicMetadata

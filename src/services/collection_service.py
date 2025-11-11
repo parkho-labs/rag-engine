@@ -3,23 +3,25 @@ from datetime import datetime
 import logging
 from repositories.qdrant_repository import QdrantRepository
 from utils.embedding_client import EmbeddingClient
-from services.storage_factory import get_file_service
+from services.unified_file_service import unified_file_service
 from services.query_service import QueryService
 from services.hierarchical_chunking_service import HierarchicalChunkingService
 from models.api_models import LinkContentItem, LinkContentResponse, ApiResponse, ApiResponseWithBody, QueryResponse, UnlinkContentResponse
 from config import Config
+from utils.document_builder import build_chunk_document, build_content_document
+from models.file_types import FileType
 
 logger = logging.getLogger(__name__)
 
 class CollectionService:
     def __init__(self):
-        logger.info("🔧 Initializing CollectionService")
+        logger.info("Initializing CollectionService")
         self.qdrant_repo = QdrantRepository()
         self.embedding_client = EmbeddingClient()
-        self.file_service = get_file_service()
+        self.file_service = unified_file_service
         self.query_service = QueryService()
         self.chunking_service = HierarchicalChunkingService()
-        logger.debug("✅ CollectionService initialized successfully")
+        logger.debug("CollectionService initialized successfully")
 
     def create_collection(self, name: str, rag_config: Optional[Dict] = None, indexing_config: Optional[Dict] = None) -> ApiResponse:
         try:
@@ -61,22 +63,22 @@ class CollectionService:
         except Exception as e:
             return ApiResponse(status="FAILURE", message=f"Failed to check collection: {str(e)}")
 
-    def _validate_file_exists(self, file_id: str) -> bool:
-        return self.file_service.file_exists(file_id)
+    def _validate_file_exists(self, file_id: str, user_id: str) -> bool:
+        return self.file_service.file_exists(file_id, user_id)
 
     def _validate_collection_exists(self, collection_name: str) -> bool:
         return self.qdrant_repo.collection_exists(collection_name)
 
-    def _get_file_content(self, file_id: str) -> Optional[str]:
-        return self.file_service.get_file_content(file_id)
+    def _get_file_content(self, file_id: str, user_id: str) -> Optional[str]:
+        return self.file_service.get_file_content(file_id, user_id)
 
-    def _generate_embedding_and_document(self, file_id: str, file_content: str, file_type: str) -> Optional[List[Dict[str, Any]]]:
+    def _generate_embedding_and_document(self, file_id: str, file_content: str, file_type: str, user_id: str) -> Optional[List[Dict[str, Any]]]:
         try:
             documents = []
 
-            logger.info("file type lower is : " + file_type.lower())
-            if file_type.lower() in ["pdf", "text"]:
-                file_path = self.file_service.get_file_path(file_id)
+            logger.info("file type is: " + file_type)
+            if file_type in [FileType.PDF.value, FileType.TEXT.value]:
+                file_path = self.file_service.get_file_path(file_id, user_id)
                 if not file_path:
                     return None
 
@@ -90,51 +92,18 @@ class CollectionService:
                 if not chunks:
                     logger.warning(f"No chunks generated for {file_id}, falling back to full document")
                     embedding = self.embedding_client.generate_single_embedding(file_content)
-                    return [{
-                        "document_id": file_id,
-                        "text": file_content,
-                        "source": file_type,
-                        "metadata": {"file_type": file_type},
-                        "vector": embedding
-                    }]
+                    return [build_content_document(file_id, file_type, file_content, embedding)]
 
                 for chunk in chunks:
                     embedding = self.embedding_client.generate_single_embedding(chunk.text)
-                    doc = {
-                        "document_id": file_id,
-                        "chunk_id": chunk.chunk_id,
-                        "text": chunk.text,
-                        "source": file_type,
-                        "metadata": {
-                            "file_type": file_type,
-                            "chunk_type": chunk.chunk_metadata.chunk_type.value,
-                            "topic_id": chunk.chunk_metadata.topic_id,
-                            "chapter_num": chunk.topic_metadata.chapter_num,
-                            "chapter_title": chunk.topic_metadata.chapter_title,
-                            "section_num": chunk.topic_metadata.section_num,
-                            "section_title": chunk.topic_metadata.section_title,
-                            "page_start": chunk.topic_metadata.page_start,
-                            "page_end": chunk.topic_metadata.page_end,
-                            "key_terms": chunk.chunk_metadata.key_terms,
-                            "equations": chunk.chunk_metadata.equations,
-                            "has_equations": chunk.chunk_metadata.has_equations,
-                            "has_diagrams": chunk.chunk_metadata.has_diagrams,
-                        },
-                        "vector": embedding
-                    }
+                    doc = build_chunk_document(file_id, file_type, chunk, embedding)
                     documents.append(doc)
 
                 logger.info(f"Generated {len(documents)} hierarchical chunks for {file_id}")
 
             else:
                 embedding = self.embedding_client.generate_single_embedding(file_content)
-                documents = [{
-                    "document_id": file_id,
-                    "text": file_content,
-                    "source": file_type,
-                    "metadata": {"file_type": file_type},
-                    "vector": embedding
-                }]
+                documents = [build_content_document(file_id, file_type, file_content, embedding)]
 
             return documents
         except Exception as e:
@@ -178,7 +147,7 @@ class CollectionService:
         )
 
 
-    def link_content(self, collection_name: str, files: List[LinkContentItem]) -> List[LinkContentResponse]:
+    def link_content(self, collection_name: str, files: List[LinkContentItem], user_id: str) -> List[LinkContentResponse]:
         logger.info(f"Linking {len(files)} files to collection '{collection_name}'")
         responses = []
 
@@ -194,7 +163,7 @@ class CollectionService:
             try:
                 logger.debug(f"Processing link for file {file_item.file_id}")
 
-                if not self._validate_file_exists(file_item.file_id):
+                if not self._validate_file_exists(file_item.file_id, user_id):
                     logger.warning(f"File {file_item.file_id} not found")
                     responses.append(self._create_link_error_response(file_item, 404, "File not found"))
                     continue
@@ -204,7 +173,7 @@ class CollectionService:
                     responses.append(self._create_link_error_response(file_item, 409, "File already linked, unlink first"))
                     continue
 
-                file_content = self._get_file_content(file_item.file_id)
+                file_content = self._get_file_content(file_item.file_id, user_id)
                 if not file_content:
                     logger.error(f"Could not read content for file {file_item.file_id}")
                     responses.append(self._create_link_error_response(file_item, 500, "Could not read file content"))
@@ -212,7 +181,7 @@ class CollectionService:
 
                 logger.info(f"Generating embedding for file {file_item.file_id}")
                 documents = self._generate_embedding_and_document(
-                    file_item.file_id, file_content, file_item.type
+                    file_item.file_id, file_content, file_item.type, user_id
                 )
                 if not documents:
                     logger.error(f"Failed to generate embedding for file {file_item.file_id}")
@@ -236,7 +205,7 @@ class CollectionService:
         logger.info(f"Completed link operation for collection '{collection_name}'. Processed {len(responses)} files")
         return responses
 
-    def unlink_content(self, collection_name: str, file_ids: List[str]) -> List[UnlinkContentResponse]:
+    def unlink_content(self, collection_name: str, file_ids: List[str], user_id: str) -> List[UnlinkContentResponse]:
         logger.info(f"Unlinking {len(file_ids)} files from collection '{collection_name}'")
         responses = []
 
