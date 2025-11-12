@@ -68,6 +68,68 @@ class RAGGradioUI:
         self.last_query = None
         self.last_collection = None
         self.last_doc_ids = []
+        self.current_user = "nakul_test"  # Default user
+        self._ensure_default_user()
+
+    def _ensure_default_user(self):
+        """Ensure the default user exists and set it as current user"""
+        try:
+            # Try to get the user first
+            response = api_client.get_user(self.current_user)
+            if not response["success"]:
+                # User doesn't exist, create them
+                create_response = api_client.create_user(
+                    user_id=self.current_user,
+                    email="nakul@test.com",
+                    name="Nakul Test User"
+                )
+                if create_response["success"]:
+                    logger.info(f"Created default user: {self.current_user}")
+                else:
+                    logger.error(f"Failed to create default user: {create_response.get('error')}")
+
+            # Set the user in api_client
+            api_client.set_user(self.current_user)
+            logger.info(f"Set default user: {self.current_user}")
+        except Exception as e:
+            logger.error(f"Error ensuring default user: {e}")
+
+    def change_user(self, user_id: str) -> str:
+        """Change the current user"""
+        if not user_id or user_id.strip() == "":
+            return "❌ Please enter a valid user ID"
+
+        user_id = user_id.strip()
+
+        # Check if user exists
+        response = api_client.get_user(user_id)
+        if response["success"]:
+            self.current_user = user_id
+            api_client.set_user(user_id)
+            return f"✅ Switched to user: {user_id}"
+        else:
+            # User doesn't exist, create them
+            create_response = api_client.create_user(
+                user_id=user_id,
+                email=f"{user_id}@test.com",
+                name=user_id.replace("_", " ").title()
+            )
+            if create_response["success"]:
+                self.current_user = user_id
+                api_client.set_user(user_id)
+                return f"✅ Created and switched to user: {user_id}"
+            else:
+                return f"❌ Failed to create user: {create_response.get('error')}"
+
+    def switch_user_and_refresh(self, user_id: str):
+        """Switch user and refresh all data"""
+        status = self.change_user(user_id)
+
+        # Refresh files and collections for the new user
+        files_df, file_choices = self.refresh_files()
+        collections_df, _, _, _, _ = self.refresh_collections()
+
+        return status, self.current_user, files_df, gr.Dropdown(choices=file_choices), collections_df
 
     # Utility functions
     def _format_response(self, response: Dict[str, Any]) -> str:
@@ -484,6 +546,31 @@ class RAGGradioUI:
             gr.Markdown("# 🚀 RAG Engine", elem_classes=["center"])
             gr.Markdown("Upload files, create collections, and query your documents", elem_classes=["center"])
 
+            # User Selection Section
+            with gr.Row():
+                with gr.Column(scale=3):
+                    current_user_display = gr.Textbox(
+                        label="Current User",
+                        value=self.current_user,
+                        interactive=False,
+                        placeholder="Current logged in user"
+                    )
+                with gr.Column(scale=2):
+                    user_input = gr.Textbox(
+                        label="Switch User",
+                        placeholder="Enter user ID (e.g., john_doe)",
+                        lines=1
+                    )
+                with gr.Column(scale=1):
+                    switch_user_btn = gr.Button("Switch User", variant="secondary", size="sm")
+
+            user_status = gr.Textbox(
+                label="User Status",
+                interactive=False,
+                lines=1,
+                placeholder="User operations status..."
+            )
+
             with gr.Tabs():
                 # Tab 1: File Management
                 with gr.Tab("📁 File Management"):
@@ -760,6 +847,14 @@ class RAGGradioUI:
             bad_btn.click(
                 fn=self.rate_bad,
                 outputs=[feedback_status],
+                queue=False
+            )
+
+            # User switching functionality
+            switch_user_btn.click(
+                fn=self.switch_user_and_refresh,
+                inputs=[user_input],
+                outputs=[user_status, current_user_display, files_table, file_selector, collections_table],
                 queue=False
             )
 

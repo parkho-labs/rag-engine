@@ -10,6 +10,7 @@ logger = logging.getLogger(__name__)
 class RAGAPIClient:
     def __init__(self, base_url: str = "http://localhost:8000/api/v1"):
         self.base_url = base_url
+        self.current_user_id: Optional[str] = None
 
     def _make_request(self, method: str, endpoint: str, **kwargs) -> Dict[str, Any]:
         url = f"{self.base_url}{endpoint}"
@@ -44,19 +45,52 @@ class RAGAPIClient:
             logger.error(error_msg)
             return {"success": False, "error": error_msg, "status_code": 0}
 
+    def set_user(self, user_id: Optional[str]):
+        """Set the current user for API operations"""
+        self.current_user_id = user_id
+        logger.info(f"Current user set to: {user_id or 'None (session user)'}")
+
+    def create_user(self, user_id: str, email: str, name: str) -> Dict[str, Any]:
+        """Register a new user"""
+        data = {
+            "user_id": user_id,
+            "email": email,
+            "name": name
+        }
+        return self._make_request("POST", "/users/register", json=data)
+
+    def create_anonymous_user(self) -> Dict[str, Any]:
+        """Create an anonymous user"""
+        return self._make_request("POST", "/users/anonymous")
+
+    def get_user(self, user_id: str) -> Dict[str, Any]:
+        """Get user information"""
+        return self._make_request("GET", f"/users/{user_id}")
 
     def upload_file(self, file_content: bytes, filename: str) -> Dict[str, Any]:
         files = {"file": (filename, BytesIO(file_content), "application/octet-stream")}
-        return self._make_request("POST", "/files", files=files)
+        params = {}
+        if self.current_user_id:
+            params["user_id"] = self.current_user_id
+        return self._make_request("POST", "/files", files=files, params=params)
 
     def list_files(self) -> Dict[str, Any]:
-        return self._make_request("GET", "/files")
+        params = {}
+        if self.current_user_id:
+            params["user_id"] = self.current_user_id
+        return self._make_request("GET", "/files", params=params)
 
     def get_file(self, file_id: str) -> Dict[str, Any]:
-        return self._make_request("GET", f"/files/{file_id}")
+        params = {}
+        if self.current_user_id:
+            params["user_id"] = self.current_user_id
+        return self._make_request("GET", f"/files/{file_id}", params=params)
 
     def delete_file(self, file_id: str) -> Dict[str, Any]:
-        return self._make_request("DELETE", f"/files/{file_id}")
+        params = {}
+        if self.current_user_id:
+            params["user_id"] = self.current_user_id
+        return self._make_request("DELETE", f"/files/{file_id}", params=params)
 
     def get_collection(self, collection_name: str) -> Dict[str, Any]:
         return self._make_request("GET", f"/collection/{collection_name}")
@@ -76,10 +110,16 @@ class RAGAPIClient:
 
 
     def link_content(self, collection_name: str, files: List[Dict[str, str]]) -> Dict[str, Any]:
-        return self._make_request("POST", f"/{collection_name}/link-content", json=files)
+        params = {}
+        if self.current_user_id:
+            params["user_id"] = self.current_user_id
+        return self._make_request("POST", f"/{collection_name}/link-content", json=files, params=params)
 
     def unlink_content(self, collection_name: str, file_ids: List[str]) -> Dict[str, Any]:
-        return self._make_request("POST", f"/{collection_name}/unlink-content", json=file_ids)
+        params = {}
+        if self.current_user_id:
+            params["user_id"] = self.current_user_id
+        return self._make_request("POST", f"/{collection_name}/unlink-content", json=file_ids, params=params)
 
     def query_collection(self, collection_name: str, query: str = "") -> Dict[str, Any]:
         data = {"query": query} if query else {}
