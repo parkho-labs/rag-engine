@@ -1,6 +1,6 @@
 import logging
 from typing import Optional, Dict, Any, List
-from database.connection import db_connection
+from database.postgres_connection import db_connection
 
 logger = logging.getLogger(__name__)
 

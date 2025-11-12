@@ -9,7 +9,7 @@ from typing import Optional, Dict, Any, List
 from models.api_models import FileUploadResponse
 from models.file_types import FileExtensions, UnsupportedFileTypeError
 from services.minio_service import minio_service
-from database.connection import db_connection
+from database.postgres_connection import db_connection
 
 logger = logging.getLogger(__name__)
 
