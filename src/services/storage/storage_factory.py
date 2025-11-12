@@ -1,11 +1,11 @@
-import os
+from config import Config
 from .storage_interface import StorageServiceInterface
 from .minio_storage_service import MinIOStorageService
 from .local_storage_service import LocalStorageService
 
 
 def get_storage_service() -> StorageServiceInterface:
-    storage_type = os.getenv("STORAGE_TYPE", "minio").lower()
+    storage_type = Config.storage.STORAGE_TYPE
 
     if storage_type == "local":
         return LocalStorageService()
