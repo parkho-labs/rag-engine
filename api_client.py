@@ -63,8 +63,10 @@ class RAGAPIClient:
         """Create an anonymous user"""
         return self._make_request("POST", "/users/anonymous")
 
+    def list_users(self) -> Dict[str, Any]:
+        return self._make_request("GET", "/users")
+
     def get_user(self, user_id: str) -> Dict[str, Any]:
-        """Get user information"""
         return self._make_request("GET", f"/users/{user_id}")
 
     def upload_file(self, file_content: bytes, filename: str) -> Dict[str, Any]:
@@ -91,6 +93,9 @@ class RAGAPIClient:
         if self.current_user_id:
             params["user_id"] = self.current_user_id
         return self._make_request("DELETE", f"/files/{file_id}", params=params)
+
+    def list_collections(self) -> Dict[str, Any]:
+        return self._make_request("GET", "/collections")
 
     def get_collection(self, collection_name: str) -> Dict[str, Any]:
         return self._make_request("GET", f"/collection/{collection_name}")
@@ -121,9 +126,18 @@ class RAGAPIClient:
             params["user_id"] = self.current_user_id
         return self._make_request("POST", f"/{collection_name}/unlink-content", json=file_ids, params=params)
 
-    def query_collection(self, collection_name: str, query: str = "") -> Dict[str, Any]:
-        data = {"query": query} if query else {}
+    def query_collection(self, collection_name: str, query: str = "", enable_critic: bool = True) -> Dict[str, Any]:
+        data = {"query": query, "enable_critic": enable_critic}
         return self._make_request("POST", f"/{collection_name}/query", json=data)
+
+    def submit_feedback(self, query: str, doc_ids: List[str], label: int, collection: str) -> Dict[str, Any]:
+        data = {
+            "query": query,
+            "doc_ids": doc_ids,
+            "label": label,
+            "collection": collection
+        }
+        return self._make_request("POST", "/feedback", json=data)
 
 
 api_client = RAGAPIClient()

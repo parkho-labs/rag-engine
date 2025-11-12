@@ -7,6 +7,28 @@ from models.api_models import ApiResponse, ApiResponseWithBody
 router = APIRouter()
 
 
+@router.get("/")
+def list_users() -> ApiResponseWithBody:
+    try:
+        # Get a simple list of user IDs from database
+        query = "SELECT id FROM users ORDER BY created_at DESC"
+        from database.connection import db_connection
+        results = db_connection.execute_query(query)
+        user_ids = [row[0] for row in results] if results else []
+
+        return ApiResponseWithBody(
+            status="SUCCESS",
+            message="Users retrieved successfully",
+            body={"users": user_ids}
+        )
+    except Exception as e:
+        return ApiResponseWithBody(
+            status="FAILURE",
+            message=f"Failed to list users: {str(e)}",
+            body={"users": []}
+        )
+
+
 class RegisterUserRequest(BaseModel):
     user_id: str
     email: str

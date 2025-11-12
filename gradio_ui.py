@@ -94,42 +94,36 @@ class RAGGradioUI:
         except Exception as e:
             logger.error(f"Error ensuring default user: {e}")
 
-    def change_user(self, user_id: str) -> str:
-        """Change the current user"""
-        if not user_id or user_id.strip() == "":
-            return "❌ Please enter a valid user ID"
+    def _get_user_choices(self) -> List[str]:
+        import time
+        time.sleep(10)  # Wait for backend to start
+        try:
+            response = api_client.list_users()
+            if response["success"]:
+                users_data = response["data"].get("body", {}).get("users", [])
+                logger.info(f"Got users from API: {users_data}")
+                return users_data if users_data else [self.current_user]
+            else:
+                logger.warning(f"Backend not ready yet, using fallback")
+                return [self.current_user]
+        except Exception as e:
+            logger.warning(f"Backend not ready, using fallback: {e}")
+            return [self.current_user]
 
-        user_id = user_id.strip()
-
-        # Check if user exists
-        response = api_client.get_user(user_id)
-        if response["success"]:
+    def change_user(self, user_id: str):
+        if user_id and user_id != self.current_user:
             self.current_user = user_id
             api_client.set_user(user_id)
-            return f"✅ Switched to user: {user_id}"
-        else:
-            # User doesn't exist, create them
-            create_response = api_client.create_user(
-                user_id=user_id,
-                email=f"{user_id}@test.com",
-                name=user_id.replace("_", " ").title()
-            )
-            if create_response["success"]:
-                self.current_user = user_id
-                api_client.set_user(user_id)
-                return f"✅ Created and switched to user: {user_id}"
-            else:
-                return f"❌ Failed to create user: {create_response.get('error')}"
+            logger.info(f"Switched to user: {user_id}")
 
     def switch_user_and_refresh(self, user_id: str):
-        """Switch user and refresh all data"""
-        status = self.change_user(user_id)
+        self.change_user(user_id)
 
         # Refresh files and collections for the new user
-        files_df, file_choices = self.refresh_files()
+        files_df, file_dropdown = self.refresh_files()
         collections_df, _, _, _, _ = self.refresh_collections()
 
-        return status, self.current_user, files_df, gr.Dropdown(choices=file_choices), collections_df
+        return files_df, file_dropdown, collections_df
 
     # Utility functions
     def _format_response(self, response: Dict[str, Any]) -> str:
@@ -543,33 +537,18 @@ class RAGGradioUI:
 
     def create_interface(self) -> gr.Blocks:
         with gr.Blocks(css=custom_css, title="RAG Engine", theme=gr.themes.Default()) as demo:
-            gr.Markdown("# 🚀 RAG Engine", elem_classes=["center"])
-            gr.Markdown("Upload files, create collections, and query your documents", elem_classes=["center"])
-
-            # User Selection Section
             with gr.Row():
-                with gr.Column(scale=3):
-                    current_user_display = gr.Textbox(
-                        label="Current User",
-                        value=self.current_user,
-                        interactive=False,
-                        placeholder="Current logged in user"
-                    )
-                with gr.Column(scale=2):
-                    user_input = gr.Textbox(
-                        label="Switch User",
-                        placeholder="Enter user ID (e.g., john_doe)",
-                        lines=1
-                    )
+                with gr.Column(scale=4):
+                    gr.Markdown("# 🚀 RAG Engine")
+                    gr.Markdown("Upload files, create collections, and query your documents")
                 with gr.Column(scale=1):
-                    switch_user_btn = gr.Button("Switch User", variant="secondary", size="sm")
-
-            user_status = gr.Textbox(
-                label="User Status",
-                interactive=False,
-                lines=1,
-                placeholder="User operations status..."
-            )
+                    user_dropdown = gr.Dropdown(
+                        label="User",
+                        choices=self._get_user_choices(),
+                        value=self.current_user,
+                        interactive=True,
+                        scale=1
+                    )
 
             with gr.Tabs():
                 # Tab 1: File Management
@@ -851,10 +830,10 @@ class RAGGradioUI:
             )
 
             # User switching functionality
-            switch_user_btn.click(
+            user_dropdown.change(
                 fn=self.switch_user_and_refresh,
-                inputs=[user_input],
-                outputs=[user_status, current_user_display, files_table, file_selector, collections_table],
+                inputs=[user_dropdown],
+                outputs=[files_table, file_selector, collections_table],
                 queue=False
             )
 
@@ -862,14 +841,15 @@ class RAGGradioUI:
             def initialize_data():
                 files_df, file_choices = self.refresh_files()
                 collections_df, delete_dropdown, link_dropdown, unlink_dropdown, chat_dropdown = self.refresh_collections()
-                return (files_df, file_choices, collections_df,
+                user_choices = self._get_user_choices()
+                return (gr.Dropdown(choices=user_choices, value=self.current_user), files_df, file_choices, collections_df,
                         gr.Dropdown(choices=self._get_file_choices(), multiselect=True),
                         gr.Dropdown(choices=self._get_file_choices(), multiselect=True),
                         delete_dropdown, link_dropdown, unlink_dropdown, chat_dropdown)
 
             demo.load(
                 fn=initialize_data,
-                outputs=[files_table, file_selector, collections_table, link_file_dropdown,
+                outputs=[user_dropdown, files_table, file_selector, collections_table, link_file_dropdown,
                         unlink_file_dropdown, delete_collection_dropdown, link_collection_dropdown, unlink_collection_dropdown, chat_collection_dropdown],
                 queue=False
             )
