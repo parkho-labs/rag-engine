@@ -25,6 +25,32 @@ class ApiResponseWithBody(BaseModel):
     message: str
     body: Dict[str, Any]
 
+# Enums - Define before they are used
+class ChunkType(str, Enum):
+    CONCEPT = "concept"
+    EXAMPLE = "example"
+    QUESTION = "question"
+    OTHER = "other"
+
+class ContentType(str, Enum):
+    """Type of content being indexed - determines chunking strategy"""
+    BOOK = "book"           # Full textbook (1000+ pages, use larger chunks)
+    CHAPTER = "chapter"     # Single chapter (10-50 pages, use medium chunks)
+    DOCUMENT = "document"   # Small document (<10 pages, use small chunks)
+    AUTO = "auto"           # Auto-detect based on file size
+
+# Metadata models
+class BookMetadata(BaseModel):
+    """Book-level metadata for full textbook indexing"""
+    book_id: Optional[str] = None
+    book_title: Optional[str] = None
+    book_authors: List[str] = []
+    book_edition: Optional[str] = None
+    book_subject: Optional[str] = None
+    total_chapters: Optional[int] = None
+    total_pages: Optional[int] = None
+
+# Chunking configuration
 class ChunkingStrategy(BaseModel):
     """Dynamic chunking configuration based on content type"""
     chunk_size: int
@@ -32,6 +58,7 @@ class ChunkingStrategy(BaseModel):
     content_type: ContentType
     description: str
 
+# Request/Response models
 class LinkContentItem(BaseModel):
     name: str
     file_id: str
@@ -51,29 +78,6 @@ class LinkContentResponse(BaseModel):
 class ChunkConfig(BaseModel):
     source: str
     text: str
-
-class ChunkType(str, Enum):
-    CONCEPT = "concept"
-    EXAMPLE = "example"
-    QUESTION = "question"
-    OTHER = "other"
-
-class ContentType(str, Enum):
-    """Type of content being indexed - determines chunking strategy"""
-    BOOK = "book"           # Full textbook (1000+ pages, use larger chunks)
-    CHAPTER = "chapter"     # Single chapter (10-50 pages, use medium chunks)
-    DOCUMENT = "document"   # Small document (<10 pages, use small chunks)
-    AUTO = "auto"           # Auto-detect based on file size
-
-class BookMetadata(BaseModel):
-    """Book-level metadata for full textbook indexing"""
-    book_id: Optional[str] = None
-    book_title: Optional[str] = None
-    book_authors: List[str] = []
-    book_edition: Optional[str] = None
-    book_subject: Optional[str] = None
-    total_chapters: Optional[int] = None
-    total_pages: Optional[int] = None
 
 class TopicMetadata(BaseModel):
     chapter_num: Optional[int] = None
