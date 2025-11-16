@@ -1,0 +1,42 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: parkho-config
+  namespace: parkho-ai
+data:
+  # Database Configuration
+  POSTGRES_DB: "rag_engine"
+  POSTGRES_USER: "postgres"
+  POSTGRES_PORT: "5432"
+  
+  # Qdrant Configuration
+  QDRANT_PORT: "6333"
+  QDRANT_TIMEOUT: "30"
+  
+  # MinIO Configuration
+  MINIO_PORT: "9000"
+  MINIO_CONSOLE_PORT: "9001"
+  
+  # RAG Engine Configuration
+  API_HOST: "0.0.0.0"
+  API_PORT: "8001"
+  PORT: "8001"
+  
+  # Embedding Configuration
+  EMBEDDING_MODEL: "BAAI/bge-large-en-v1.5"
+  VECTOR_SIZE: "1024"
+  CHUNK_SIZE: "512"
+  CHUNK_OVERLAP: "50"
+  
+  # LLM Configuration
+  LLM_PROVIDER: "gemini"
+  
+  # Storage Configuration
+  STORAGE_TYPE: "minio"
+  MINIO_SECURE: "false"
+  
+  # Frontend Configuration (for backend to know frontend URL)
+  FRONTEND_URL: "http://frontend-service:3000"
+  BACKEND_URL: "http://backend-service:8000"
+  RAG_ENGINE_URL: "http://rag-engine-service:8001"
+

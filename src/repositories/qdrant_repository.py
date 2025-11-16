@@ -9,8 +9,17 @@ logger = logging.getLogger(__name__)
 
 class QdrantRepository:
     def __init__(self):
+        host = Config.database.QDRANT_HOST
+        
         if Config.database.QDRANT_API_KEY:
-            url = f"{Config.database.QDRANT_HOST}:{Config.database.QDRANT_PORT}"
+            # When using API key, use url parameter
+            # Check if host already contains a scheme (http:// or https://)
+            if host.startswith(('http://', 'https://')):
+                # Host is already a full URL (e.g., from Qdrant Cloud), use it directly
+                url = host
+            else:
+                # Host is just a hostname, construct URL with scheme and port
+                url = f"http://{host}:{Config.database.QDRANT_PORT}"
             logger.info(f"Initializing Qdrant client with URL: {url}")
             logger.info(f"API Key present: {bool(Config.database.QDRANT_API_KEY)}")
             self.client = QdrantClient(
@@ -19,9 +28,13 @@ class QdrantRepository:
                 timeout=Config.database.QDRANT_TIMEOUT
             )
         else:
-            logger.info(f"Initializing Qdrant client with host: {Config.database.QDRANT_HOST}:{Config.database.QDRANT_PORT}")
+            # For local connections without API key, extract hostname from URL if needed
+            if host.startswith(('http://', 'https://')):
+                # Extract hostname from URL (remove scheme and any path/port)
+                host = host.split('://', 1)[1].split('/')[0].split(':')[0]
+            logger.info(f"Initializing Qdrant client with host: {host}:{Config.database.QDRANT_PORT}")
             self.client = QdrantClient(
-                host=Config.database.QDRANT_HOST,
+                host=host,
                 port=Config.database.QDRANT_PORT,
                 timeout=Config.database.QDRANT_TIMEOUT
             )

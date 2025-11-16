@@ -1,0 +1,31 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: parkho-ai
+
+resources:
+  - namespace.yaml
+  - configmap.yaml
+  - secrets.yaml
+  - persistent-volumes.yaml
+  - postgres-deployment.yaml
+  - minio-deployment.yaml
+  - qdrant-deployment.yaml
+  - rag-engine-deployment.yaml
+  - backend-deployment.yaml
+  - frontend-deployment.yaml
+  - services.yaml
+  - ingress.yaml
+
+# Uncomment if you want to use images from different registry
+# images:
+#   - name: rag-engine-api
+#     newName: gcr.io/parkhoai-864b2/rag-engine-api
+#     newTag: latest
+#   - name: frontend
+#     newName: gcr.io/parkhoai-864b2/parkho-ai-frontend
+#     newTag: latest
+#   - name: backend
+#     newName: gcr.io/parkhoai-864b2/parkho-ai-backend
+#     newTag: latest
+

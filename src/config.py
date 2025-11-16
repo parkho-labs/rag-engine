@@ -36,6 +36,12 @@ class AppConfig:
     API_PORT: int = int(os.getenv("API_PORT", "8000"))
     UPLOADS_DIR: str = os.getenv("UPLOADS_DIR", "uploads")
     MAX_FILE_SIZE_MB: int = int(os.getenv("MAX_FILE_SIZE_MB", "100"))
+    
+    # CORS Configuration
+    CORS_ALLOWED_ORIGINS: list = os.getenv(
+        "CORS_ALLOWED_ORIGINS",
+        "http://localhost:3000,http://localhost:7860,http://localhost:5173,https://parkho-ai-frontend-ku7bn6e62q-uc.a.run.app,https://parkho-ai-frontend-846780462763.us-central1.run.app,https://ai-content-tutor-ku7bn6e62q-uc.a.run.app,https://ai-content-tutor-846780462763.us-central1.run.app"
+    ).split(",")
 
 class RerankingConfig:
     RERANKER_ENABLED: bool = os.getenv("RERANKER_ENABLED", "true").lower() == "true"
