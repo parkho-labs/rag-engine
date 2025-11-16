@@ -1,0 +1,50 @@
+# Ingress - Only exposes Frontend publicly
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: parkho-ai-ingress
+  namespace: parkho-ai
+  annotations:
+    # GKE Ingress annotations
+    kubernetes.io/ingress.class: "gce"
+    kubernetes.io/ingress.global-static-ip-name: "parkho-ai-ip"  # Optional: reserved IP
+    # SSL/TLS configuration
+    networking.gke.io/managed-certificates: "parkho-ai-ssl-cert"
+    # Load balancer settings
+    kubernetes.io/ingress.allow-http: "false"  # Force HTTPS
+spec:
+  rules:
+  - host: your-domain.com  # Change to your domain
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: frontend-service
+            port:
+              number: 3000
+  # Optional: Add other paths if you want to expose APIs (not recommended for security)
+  # - host: api.your-domain.com
+  #   http:
+  #     paths:
+  #     - path: /
+  #       pathType: Prefix
+  #       backend:
+  #         service:
+  #           name: rag-engine-service
+  #           port:
+  #             number: 8001
+---
+# Managed SSL Certificate (GKE)
+apiVersion: networking.gke.io/v1
+kind: ManagedCertificate
+metadata:
+  name: parkho-ai-ssl-cert
+  namespace: parkho-ai
+spec:
+  domains:
+    - your-domain.com
+    # Add subdomains if needed
+    # - api.your-domain.com
+

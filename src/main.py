@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from api.routes import collections, config, files, feedback, users, quizzes
+from config import Config
 
 app = FastAPI(
     title="RAG Engine API",
@@ -11,13 +12,7 @@ app = FastAPI(
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",  # React dev server
-        "http://localhost:7860",  # Gradio UI
-        "http://localhost:5173",
-        "https://parkho-ai-frontend-846780462763.us-central1.run.app",
-        "https://ai-content-tutor-846780462763.us-central1.run.app"
-    ],
+    allow_origins=Config.app.CORS_ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
