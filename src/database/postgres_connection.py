@@ -14,6 +14,9 @@ class DatabaseConnection:
         self.database = os.getenv("POSTGRES_DB", "rag_engine")
         self.user = os.getenv("POSTGRES_USER", "postgres")
         self.password = os.getenv("POSTGRES_PASSWORD", "postgres")
+        # SSL mode for secure connections (required for cloud databases like Supabase)
+        # Options: disable, allow, prefer, require, verify-ca, verify-full
+        self.sslmode = os.getenv("POSTGRES_SSLMODE", "prefer")
 
     def connect(self):
         import time
@@ -27,9 +30,10 @@ class DatabaseConnection:
                     port=self.port,
                     database=self.database,
                     user=self.user,
-                    password=self.password
+                    password=self.password,
+                    sslmode=self.sslmode
                 )
-                logger.info(f"Connected to PostgreSQL at {self.host}:{self.port}")
+                logger.info(f"Connected to PostgreSQL at {self.host}:{self.port} (SSL: {self.sslmode})")
                 return
             except Exception as e:
                 if attempt < max_retries - 1:
