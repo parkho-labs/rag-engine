@@ -54,7 +54,7 @@ def get_content_disposition_filename(file_path: str) -> str:
     """
     # Extract filename from storage path if needed
     if file_path.startswith('local://'):
-        file_path = file_path[8:]
+        file_path = file_path[len('local://'):]
 
     filename = os.path.basename(file_path)
 
