@@ -32,7 +32,7 @@ def get_mime_type(file_path: str) -> str:
     """
     # Extract filename from storage path if needed
     if file_path.startswith('local://'):
-        file_path = file_path[8:]
+        file_path = file_path[len('local://'):]
     elif '/' in file_path:
         file_path = os.path.basename(file_path)
 
