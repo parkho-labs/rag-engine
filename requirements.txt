@@ -17,3 +17,4 @@ pytube==15.0.0
 beautifulsoup4==4.12.3
 lxml==5.1.0
 readability-lxml==0.8.1
+google-cloud-storage==2.14.0
