@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 from typing import List, Optional, Any, Dict
 from datetime import datetime
 from enum import Enum
@@ -59,6 +59,7 @@ class ChunkingStrategy(BaseModel):
     description: str
 
 # Request/Response models
+# Request/Response models
 class LinkContentItem(BaseModel):
     name: str
     file_id: Optional[str] = None
@@ -67,6 +68,29 @@ class LinkContentItem(BaseModel):
     youtube_url: Optional[str] = None
     content_type: Optional[ContentType] = ContentType.AUTO  # NEW: Auto-detect by default
     book_metadata: Optional[BookMetadata] = None            # NEW: For book indexing
+
+    @model_validator(mode='before')
+    @classmethod
+    def check_source_consistency(cls, values):
+        if isinstance(values, dict):
+            type_val = values.get('type')
+            file_id = values.get('file_id')
+            web_url = values.get('web_url')
+            youtube_url = values.get('youtube_url')
+            
+            # Skip validation if type is not present (might be partial update? unlikely for this model)
+            if not type_val:
+                return values
+
+            provided_sources = [v for v in [file_id, web_url, youtube_url] if v is not None]
+            if len(provided_sources) != 1:
+                raise ValueError("Exactly one of 'file_id', 'web_url', or 'youtube_url' must be provided.")
+
+            if (type_val == 'file' and not file_id) or \
+               (type_val == 'web' and not web_url) or \
+               (type_val == 'youtube' and not youtube_url):
+                raise ValueError(f"Mismatch between type '{type_val}' and provided source URL/ID.")
+        return values
 
 class LinkContentResponse(BaseModel):
     name: str
